@@ -68,18 +68,19 @@
     // Handle admin login
     function handleAdminLogin(e) {
       e.preventDefault();
+
     
       socket.addEventListener('open', () => {
         // Send a request to the server for the admin password
-        socket.send(adminpass_request);
+        socket.send(packet);
       });
 
       socket.addEventListener('message', event => {
-        // Receive the admin password from the server
-        ADMIN_PASSWORD = event.data;
+        // Receive whether the admin password is valid or not from the server
+        const sign_in = event.data;
       });
 
-      if (adminPassword.value === ADMIN_PASSWORD) {
+      if (sign_in === true) {
         isAdmin = true;
         localStorage.setItem('isAdmin', 'true');
         showAdminPanel();
