@@ -1,44 +1,65 @@
-// initialise websockets on port 3000
-const io = require('socket.io')(3000);
+import { MongoClient } from 'mongodb';
+import { Server } from 'socket.io';
 
-// declare constants
-const adminpass_request = "adminpassrequest";
+// Initialize WebSocket server on port 3000
+const io = new Server(3000);
 
-//initialise mongoDB connection
-const { MongoClient } = require('mongodb');
+// Constants
+const adminPassRequest = "adminpassrequest";
+
+// MongoDB client and collection variables
 const client = new MongoClient('mongodb://localhost:27017');
-await client.connect();
+let collection;
 
-io.on('connection', socket => {
-  console.log('Client connected');
+async function connectToMongoDB() {
+  try {
+    await client.connect();
+    console.log("Connected to MongoDB");
 
-  // Listen for messages from the client
-  socket.on('message', message => {
-    console.log('Received message:', message);
+    const db = client.db('Users');
+    collection = db.collection('Admins');
 
-    const packet = JSON.parse(message);
+  } catch (error) {
+    console.error("MongoDB connection error:", error);
+  }
+}
 
-    // Read the request_data value
-    const { request_data } = packet;
-    console.log('Request data:', request_data);
+// Wait for MongoDB to connect first, then start listening for socket connections
+connectToMongoDB().then(() => {
+  io.on('connection', socket => {
+    console.log('Client connected');
 
-    // Read the payload value
-    const { payload } = packet;
-    console.log('Payload:', payload);
-    
-    switch(request_data)
-    {
-        case(adminpass_request):
-            administrators.findOne({password: payload}, (err, document) => {
+    socket.on('message', async message => {
+      console.log('Received message:', message);
 
-                if (document) {
-                    const sign_in_status = true;
-                }
-                else {
-                    const sign_in_status = false;
-                }}); 
-            socket.emit(sign_in_status);
-    }
-    socket.emit('response', 'Hello from the server!');
+      try {
+        const packet = JSON.parse(message);
+
+        const { request_data, payload } = packet;
+
+        switch(request_data) {
+          case adminPassRequest:
+            // Check if password matches any admin document
+            try {
+              const admin = await collection.findOne({ password: payload });
+              const signInStatus = !!admin;
+              // Send back an event with the result
+              socket.emit('adminpassresponse', { success: signInStatus });
+            } catch (dbErr) {
+              console.error('DB query error:', dbErr);
+              socket.emit('adminpassresponse', { success: false });
+            }
+            break;
+
+          default:
+            console.log('Invalid request data:', request_data);
+            socket.emit('error', { message: 'Invalid request' });
+        }
+
+      } catch (err) {
+        console.error('Failed to parse message:', err);
+        socket.emit('error', { message: 'Invalid JSON format' });
+      }
+    });
   });
 });

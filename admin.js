@@ -2,6 +2,13 @@
   const socket = new WebSocket('ws://localhost:3000');//server is on localhost port:3000
   const adminpass_request = "adminpassrequest"
 
+  let sign_in = false;
+
+// Send admin password request packet structure, e.g.:
+function createAdminPassRequest(password) {
+  return JSON.stringify({ type: adminpass_request, password });
+}
+
 // Quiz Data (same as index.html)
     let quizData = JSON.parse(localStorage.getItem('quizData')) || {
       math: [],
@@ -65,30 +72,59 @@
       quizForm.addEventListener('submit', handleQuizSubmit);
     }
 
-    // Handle admin login
-    function handleAdminLogin(e) {
-      e.preventDefault();
+// Handle admin login
+function handleAdminLogin(e) {
+  e.preventDefault();
 
-    
-      socket.addEventListener('open', () => {
-        // Send a request to the server for the admin password
-        socket.send(packet);
-      });
+  const password = adminPassword.value.trim();
 
-      socket.addEventListener('message', event => {
-        // Receive whether the admin password is valid or not from the server
-        const sign_in = event.data;
-      });
+  if (!password) {
+    showError('Please enter a password');
+    return;
+  }
 
-      if (sign_in === true) {
-        isAdmin = true;
-        localStorage.setItem('isAdmin', 'true');
-        showAdminPanel();
-      } else {
-        showError('Incorrect password. Please try again.');
-      }
-      adminPassword.value = '';
+  // Prepare packet to send
+  const packet = JSON.stringify({
+    request_data: adminpass_request,
+    payload: password
+  });
+
+  // Open the socket connection if not already open
+  if (socket.readyState === WebSocket.OPEN) {
+    socket.send(packet);
+  } else {
+    socket.addEventListener('open', () => {
+      socket.send(packet);
+    });
+  }
+
+  // Listen for the admin password response only once per login attempt
+  socket.addEventListener('adminpassresponse', function onResponse(event) {
+    // Remove listener after first response to avoid duplicates
+    socket.removeEventListener('adminpassresponse', onResponse);
+
+    const data = event.data;
+
+    // The data received is a JSON string, parse it
+    let response;
+    try {
+      response = JSON.parse(data);
+    } catch {
+      showError('Invalid response from server');
+      return;
     }
+
+    if (response.success === true) {
+      isAdmin = true;
+      localStorage.setItem('isAdmin', 'true');
+      showAdminPanel();
+    } else {
+      showError('Incorrect password. Please try again.');
+    }
+
+    adminPassword.value = '';
+  });
+}
 
     // Show error message
     function showError(message) {
